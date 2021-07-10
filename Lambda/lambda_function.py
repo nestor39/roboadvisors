@@ -1,5 +1,10 @@
+
+
 ### Required Libraries ###
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import json
+from botocore.vendored import requests
 from dateutil.relativedelta import relativedelta
 
 ### Functionality Helper Functions ###
@@ -110,6 +115,59 @@ In this section, you will create an Amazon Lambda function that will validate th
 7. Build your bot, and test it with valid and invalid data for the slots.
 
 """
+def validate_data(age, dollars, intent_request):
+
+
+    # Filter the data, it should be 0 < age < 65
+    if age is not None:
+        age = parse_int(
+            age
+        )  # Since parameters are strings it's important to cast values
+        if age <0 or age >65:
+            return build_validation_result(
+                False,
+                "age",
+                "The person should be older than 0 and younger 65 ",
+                
+            )
+        
+    # Filter the age, it should be > 5000
+    if dollars is not None:
+        dollars = parse_int(
+            dollars
+        )  # Since parameters are strings it's important to cast values
+        if dollars < 5000:
+            return build_validation_result(
+                False,
+                "amount",
+                "The amount should be greater than 5000, "
+                "please provide a correct amount in dollars.",
+            )
+
+
+    # A True results is returned if age or amount are correct 
+    return build_validation_result(True, None, None)
+
+
+
+def get_recommendation(riskLevel):
+    """
+    Returns an investment recommendation based on the selected risk leve
+    """
+    recommendation = ""
+    if riskLevel == "none":
+        recommendation = "100% bonds (AGG), 0% equities (SPY)"
+    elif riskLevel == "low":
+        recommendation = "60% bonds (AGG), 40% equities (SPY)"
+    elif risk_level == "medium":
+        recommendation = "40% bonds (AGG), 60% equities (SPY)"
+    elif riskLevel == "high":
+        recommendation = "20% bonds (AGG), 80% equities (SPY)"
+    else: 
+        recommendation = "Please pick one option"
+    
+    return recommendation
+
 
 
 ### Intents Handlers ###
@@ -124,7 +182,48 @@ def recommend_portfolio(intent_request):
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
 
-    # YOUR CODE GOES HERE!
+    if source == "DialogCodeHook":
+     
+
+        # Gets all the slots
+        slots = get_slots(intent_request)
+
+        # Validates user's input using the validate_data function
+        validation_result = validate_data(age, investment_amount, intent_request)
+
+        # If the data provided by the user is not valid,
+        # the elicitSlot dialog action is used to re-prompt for the first violation detected.
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None 
+
+            # Returns a dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # Fetch current session attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # return to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+
+    test_recomendation = get_recommendation(risk_level)
+
+    return close(
+        intent_request['sessionAttributes'],
+        "Fulfilled",
+        {
+            "contentType":"PlainText",
+            "content": """thank you for your information;
+            based on the risk level you defined, my recommendation is to choose and investment portfolio with {}
+            """.format(test_recomendation
+            ),
+        },
+    )
 
 
 ### Intents Dispatcher ###
